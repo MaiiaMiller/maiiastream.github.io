@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streamer Multi-Tool v7</title>
+    <link id="favicon" rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgo=">
+    <style>
+        :root { --primary: #4f46e5; --bg: #f4f4f9; --danger: #ef4444; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; background: var(--bg); color: #333; }
+
+        /* --- AUTH SCREEN --- */
+        #auth-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--primary); display: flex; justify-content: center; align-items: center; z-index: 9999;
+        }
+        .auth-card { background: white; padding: 30px; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .auth-card h1 { margin-bottom: 20px; font-size: 1.5rem; }
+        .auth-card input { width: 150px; text-align: center; font-size: 24px; letter-spacing: 5px; margin-bottom: 20px; border: 2px solid #ddd; border-radius: 8px; padding: 5px; }
+        .auth-btn { background: var(--primary); color: white; border: none; padding: 10px 25px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+
+        /* --- EDITOR INTERFACE --- */
+        #editor-ui { display: none; } 
+        .editor-mode { display: flex; flex-direction: column; align-items: center; padding: 60px 20px 40px; gap: 40px; }
+        
+        /* Logout Button */
+        .header-controls { position: fixed; top: 0; left: 0; width: 100%; background: white; padding: 10px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; justify-content: flex-end; gap: 10px; box-sizing: border-box; z-index: 100; }
+        .logout-btn { background: var(--danger); color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; transition: opacity 0.2s; }
+        .logout-btn:hover { opacity: 0.9; }
+        .reset-btn { background: #6b7280; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; transition: opacity 0.2s; }
+        .reset-btn:hover { opacity: 0.9; }
+
+        .panel { 
+            background: white; padding: 25px; border-radius: 15px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 600px; 
+        }
+        h2 { margin-top: 0; text-align: center; color: var(--primary); border-bottom: 2px solid var(--bg); padding-bottom: 10px; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
+        .form-group { flex: 1; margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #667; }
+        input, select, textarea { 
+            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; 
+            box-sizing: border-box; font-family: inherit; 
+        }
+        input[type="color"] { height: 45px; padding: 2px; cursor: pointer; }
+        .url-box { 
+            background: #f0f0ff; padding: 15px; border-radius: 10px; border: 1px dashed var(--primary); margin-top: 15px;
+        }
+        .url-box input { background: #fff; color: var(--primary); font-weight: bold; cursor: copy; }
+        
+        /* --- WIDGET STYLES --- */
+        .widget-base { padding: 20px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); background-repeat: no-repeat; background-position: center; background-size: cover; display: inline-block; min-width: 300px; }
+        .progress-bar-container { width: 100%; height: 30px; border-radius: 15px; position: relative; overflow: hidden; background: rgba(0,0,0,0.2); }
+        .progress-bar-fill { height: 100%; transition: width 1s; position: relative; }
+        .progress-bar-fill::after { content: ""; position: absolute; top:0; left:-100%; width:50%; height:100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); animation: shine 3s infinite; }
+        @keyframes shine { 100% { left: 200%; } }
+        .donor-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .qr-widget { text-align: center; display: inline-flex; flex-direction: column; align-items: center; padding: 15px; border-radius: 12px; }
+        .qr-image-wrap { background: white; padding: 10px; border-radius: 8px; line-height: 0; }
+        .qr-text-line { margin-top: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; word-break: break-all; }
+        .custom-text-widget { display: inline-block; box-sizing: border-box; background-position: center; background-size: cover; background-repeat: no-repeat; }
+        .custom-img-widget { display: inline-block; line-height: 0; }
+
+        /* SYSTEM */
+        #widget-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: none; justify-content: center; align-items: center; background: transparent; }
+        body.is-widget #widget-overlay { display: flex; }
+        body.is-widget #auth-screen, body.is-widget #editor-ui, body.is-widget .header-controls { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-screen">
+        <div class="auth-card">
+            <h1>🔐 Доступ ограничен</h1>
+            <input type="password" id="pin-input" placeholder="PIN" maxlength="4">
+            <br>
+            <button class="auth-btn" onclick="checkAuth()">Войти</button>
+        </div>
+    </div>
+
+    <div id="header-ui" class="header-controls" style="display: none;">
+        <button class="reset-btn" onclick="resetSettings()">Сбросить настройки</button>
+        <button class="logout-btn" onclick="logout()">Выйти из системы</button>
+    </div>
+
+    <div id="editor-ui" class="editor-mode">
+        <div class="panel">
+            <h2>1. Прогресс сбора</h2>
+            <div class="form-group"><label>Цель</label><input type="text" id="p_title" value="На новую камеру"></div>
+            <div class="form-row"><div class="form-group"><label>Собрано</label><input type="number" id="p_cur" value="500"></div><div class="form-group"><label>Надо</label><input type="number" id="p_goal" value="2000"></div><div class="form-group"><label>Валюта</label><input type="text" id="p_unit" value="$"></div></div>
+            <div class="form-row"><div class="form-group"><label>Цвет фона</label><input type="color" id="p_bg" value="#1e1e2e"></div><div class="form-group"><label>Цвет текста</label><input type="color" id="p_tc" value="#ffffff"></div><div class="form-group"><label>Цвет прогресса</label><input type="color" id="p_fill" value="#00b894"></div></div>
+            <div class="form-group"><label>URL картинки фона</label><input type="text" id="p_img" placeholder="https://..."></div>
+            <div class="url-box"><label>Ссылка для OBS:</label><input type="text" id="p_url" readonly onclick="copy(this)"></div>
+        </div>
+
+        <div class="panel">
+            <h2>2. Топ донатеры</h2>
+            <div class="form-group"><label>Заголовок</label><input type="text" id="d_title" value="Лучшие меценаты"></div>
+            <div class="form-group"><label>Список (Имя:Сумма через запятую)</label><textarea id="d_list" rows="2">Alex:500, Marina:300</textarea></div>
+            <div class="form-row"><div class="form-group"><label>Цвет фона</label><input type="color" id="d_bg" value="#2d3436"></div><div class="form-group"><label>Цвет текста</label><input type="color" id="d_tc" value="#ffffff"></div></div>
+            <div class="form-group"><label>URL картинки фона</label><input type="text" id="d_img" placeholder="https://..."></div>
+            <div class="url-box"><label>Ссылка для OBS:</label><input type="text" id="d_url" readonly onclick="copy(this)"></div>
+        </div>
+
+        <div class="panel">
+            <h2>3. QR-код и Ссылка</h2>
+            <div class="form-group"><label>Ссылка для QR-кода</label><input type="text" id="q_link" value="https://maiiamiller.netlify.app/"></div>
+            <div class="form-group"><label>Текст ссылки под кодом</label><input type="text" id="q_txt" value="maiiamiller.netlify.app"></div>
+            <div class="form-row"><div class="form-group"><label>Цвет фона</label><input type="color" id="q_bg" value="#ffffff"></div><div class="form-group"><label>Цвет текста/кода</label><input type="color" id="q_col" value="#000000"></div><div class="form-group"><label>Размер текста</label><input type="number" id="q_size" value="14"></div></div>
+            <div class="url-box"><label>Ссылка для OBS:</label><input type="text" id="q_url" readonly onclick="copy(this)"></div>
+        </div>
+
+        <div class="panel">
+            <h2>4. Кастомный текст</h2>
+            <div class="form-group"><label>Текст сообщения</label><textarea id="t_val" rows="2">Привет, зритель!</textarea></div>
+            <div class="form-row">
+                <div class="form-group"><label>Шрифт</label>
+                    <select id="t_font"><option value="Arial">Arial</option><option value="Impact">Impact</option><option value="Georgia">Georgia</option><option value="'Segoe UI'">Segoe UI</option></select>
+                </div>
+                <div class="form-group"><label>Размер (px)</label><input type="number" id="t_size" value="32"></div>
+                <div class="form-group"><label>Цвет текста</label><input type="color" id="t_col" value="#ffffff"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>Цвет подложки</label><input type="color" id="t_bg" value="#4f46e5"></div>
+                <div class="form-group"><label>Скругление (px)</label><input type="number" id="t_rad" value="10"></div>
+                <div class="form-group"><label>Отступы (px)</label><input type="number" id="t_pad" value="20"></div>
+            </div>
+            <div class="form-group"><label>URL картинки фона подложки</label><input type="text" id="t_img" placeholder="https://..."></div>
+            <div class="url-box"><label>Ссылка для OBS:</label><input type="text" id="t_url" readonly onclick="copy(this)"></div>
+        </div>
+
+        <div class="panel">
+            <h2>5. Кастомное изображение</h2>
+            <div class="form-group"><label>URL Изображения</label><input type="text" id="i_url_in" placeholder="https://..."></div>
+            <div class="form-row"><div class="form-group"><label>Ширина (px)</label><input type="number" id="i_w" value="200"></div><div class="form-group"><label>Скругление (%)</label><input type="number" id="i_rad" value="0"></div><div class="form-group"><label>Прозрачность</label><input type="number" id="i_op" step="0.1" value="1"></div></div>
+            <div class="url-box"><label>Ссылка для OBS:</label><input type="text" id="i_url_out" readonly onclick="copy(this)"></div>
+        </div>
+    </div>
+
+    <div id="widget-overlay"><div id="render-target"></div></div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const type = params.get('type');
+        const HASH_TARGET = "59279341ea59fbf34025024596b670b6df2c9f80e71b9ad19aea71ba43b083fc";
+        let currentAuthHash = null;
+        let cloudSaveTimer = null;
+
+        async function hash(string) {
+            const utf8 = new TextEncoder().encode(string);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function checkAuth() {
+            const val = document.getElementById('pin-input').value;
+            const h = await hash(val);
+            if (h === HASH_TARGET) {
+                currentAuthHash = h;
+                sessionStorage.setItem('auth_stream', 'true');
+                sessionStorage.setItem('auth_hash', h);
+                showEditor();
+                await loadFromCloud();
+            } else {
+                alert('Неверный код!');
+            }
+        }
+
+        function showEditor() {
+            document.getElementById('auth-screen').style.display = 'none';
+            document.getElementById('editor-ui').style.display = 'flex';
+            document.getElementById('header-ui').style.display = 'flex';
+        }
+
+        function logout() {
+            currentAuthHash = null;
+            sessionStorage.removeItem('auth_stream');
+            sessionStorage.removeItem('auth_hash');
+            document.getElementById('pin-input').value = '';
+            document.getElementById('auth-screen').style.display = 'flex';
+            document.getElementById('editor-ui').style.display = 'none';
+            document.getElementById('header-ui').style.display = 'none';
+        }
+
+        function copy(el) { el.select(); document.execCommand('copy'); alert('Скопировано!'); }
+        function id(name) { return document.getElementById(name); }
+
+        const SETTINGS_KEY = 'streamer_tool_settings';
+        const FIELD_IDS = ['p_title','p_cur','p_goal','p_unit','p_bg','p_tc','p_fill','p_img','d_title','d_list','d_bg','d_tc','d_img','q_link','q_txt','q_bg','q_col','q_size','t_val','t_font','t_size','t_col','t_bg','t_rad','t_pad','t_img','i_url_in','i_w','i_rad','i_op'];
+
+        function saveSettings() {
+            const data = {};
+            FIELD_IDS.forEach(fid => {
+                const el = id(fid);
+                if (el) data[fid] = el.value;
+            });
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+            scheduleCloudSave(data);
+        }
+
+        function scheduleCloudSave(data) {
+            if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
+            cloudSaveTimer = setTimeout(() => saveToCloud(data), 1000);
+        }
+
+        async function saveToCloud(data) {
+            const authHash = currentAuthHash || sessionStorage.getItem('auth_hash');
+            if (!authHash) return;
+            try {
+                await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'X-Auth-Hash': authHash },
+                    body: JSON.stringify(data)
+                });
+            } catch(e) {
+                console.warn('Не удалось сохранить в облако:', e);
+            }
+        }
+
+        async function loadFromCloud() {
+            const authHash = currentAuthHash || sessionStorage.getItem('auth_hash');
+            if (!authHash) return;
+            try {
+                const res = await fetch('/api/settings', {
+                    headers: { 'X-Auth-Hash': authHash }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data) {
+                        FIELD_IDS.forEach(fid => {
+                            const el = id(fid);
+                            if (el && data[fid] !== undefined && data[fid] !== '') {
+                                el.value = data[fid];
+                            }
+                        });
+                        localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+                        updateLinks();
+                        return;
+                    }
+                }
+            } catch(e) {
+                console.warn('Не удалось загрузить из облака, используем локальные:', e);
+            }
+            loadSettings();
+        }
+
+        function loadSettings() {
+            const raw = localStorage.getItem(SETTINGS_KEY);
+            if (!raw) return;
+            try {
+                const data = JSON.parse(raw);
+                FIELD_IDS.forEach(fid => {
+                    const el = id(fid);
+                    if (el && data[fid] !== undefined && data[fid] !== '') {
+                        el.value = data[fid];
+                    }
+                });
+            } catch(e) {}
+        }
+
+        async function resetSettings() {
+            if (confirm('Сбросить все настройки к значениям по умолчанию?')) {
+                localStorage.removeItem(SETTINGS_KEY);
+                const authHash = currentAuthHash || sessionStorage.getItem('auth_hash');
+                if (authHash) {
+                    try {
+                        await fetch('/api/settings', {
+                            method: 'DELETE',
+                            headers: { 'X-Auth-Hash': authHash }
+                        });
+                    } catch(e) {}
+                }
+                location.reload();
+            }
+        }
+
+        function updateLinks() {
+            const baseUrl = window.location.origin + window.location.pathname;
+            
+            const p = new URLSearchParams({ type: 'progress', t: id('p_title').value, c: id('p_cur').value, g: id('p_goal').value, u: id('p_unit').value, bg: id('p_bg').value, tc: id('p_tc').value, f: id('p_fill').value, img: id('p_img').value });
+            id('p_url').value = baseUrl + '?' + p.toString();
+
+            const d = new URLSearchParams({ type: 'donors', t: id('d_title').value, l: id('d_list').value, bg: id('d_bg').value, tc: id('d_tc').value, img: id('d_img').value });
+            id('d_url').value = baseUrl + '?' + d.toString();
+
+            const q = new URLSearchParams({ type: 'qr', link: id('q_link').value, txt: id('q_txt').value, bg: id('q_bg').value, col: id('q_col').value.replace('#',''), sz: id('q_size').value });
+            id('q_url').value = baseUrl + '?' + q.toString();
+
+            const t = new URLSearchParams({ type: 'text', val: id('t_val').value, f: id('t_font').value, sz: id('t_size').value, c: id('t_col').value, bg: id('t_bg').value, rad: id('t_rad').value, pad: id('t_pad').value, img: id('t_img').value });
+            id('t_url').value = baseUrl + '?' + t.toString();
+
+            const i = new URLSearchParams({ type: 'image', url: id('i_url_in').value, w: id('i_w').value, r: id('i_rad').value, o: id('i_op').value });
+            id('i_url_out').value = baseUrl + '?' + i.toString();
+        }
+
+        if (type) {
+            document.body.classList.add('is-widget');
+            const target = id('render-target');
+            let html = '';
+            if (type === 'progress') {
+                const pct = Math.min((params.get('c') / params.get('g')) * 100, 100);
+                html = `<div class="widget-base" style="background-color:${params.get('bg')}; color:${params.get('tc')}; background-image:url('${decodeURIComponent(params.get('img'))}')"><div style="font-weight:bold; margin-bottom:10px">${params.get('t')}</div><div class="progress-bar-container"><div class="progress-bar-fill" style="width:${pct}%; background-color:${params.get('f')}"></div><div style="position:absolute; width:100%; top:0; text-align:center; font-size:14px; line-height:30px; font-weight:900; text-shadow:1px 1px 2px #000; color:#fff;">${params.get('c')} / ${params.get('g')} ${params.get('u')}</div></div></div>`;
+            } else if (type === 'donors') {
+                const list = params.get('l').split(',').map(item => { const [n, v] = item.split(':'); return `<li class="donor-item"><span>${n}</span><b>${v}</b></li>`; }).join('');
+                html = `<div class="widget-base" style="background-color:${params.get('bg')}; color:${params.get('tc')}; background-image:url('${decodeURIComponent(params.get('img'))}')"><div style="font-size:20px; font-weight:bold; text-align:center; margin-bottom:10px;">${params.get('t')}</div><ul class="donors-list">${list}</ul></div>`;
+            } else if (type === 'qr') {
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(params.get('link'))}&color=${params.get('col')}`;
+                html = `<div class="qr-widget" style="background-color:${params.get('bg')}; color:#${params.get('col')};"><div class="qr-image-wrap"><img src="${qrUrl}"></div><div class="qr-text-line" style="font-size:${params.get('sz')}px;">${params.get('txt')}</div></div>`;
+            } else if (type === 'text') {
+                const bgImg = params.get('img') ? `url('${decodeURIComponent(params.get('img'))}')` : 'none';
+                html = `<div class="custom-text-widget" style="color:${params.get('c')}; font-family:${params.get('f')}; font-size:${params.get('sz')}px; background-color:${params.get('bg')}; background-image:${bgImg}; border-radius:${params.get('rad')}px; padding:${params.get('pad')}px; font-weight:bold;">${params.get('val').replace(/\n/g, '<br>')}</div>`;
+            } else if (type === 'image') {
+                html = `<div class="custom-img-widget"><img src="${decodeURIComponent(params.get('url'))}" style="width:${params.get('w')}px; border-radius:${params.get('r')}%; opacity:${params.get('o')};"></div>`;
+            }
+            target.innerHTML = html;
+        } else {
+            if (sessionStorage.getItem('auth_stream') === 'true') {
+                currentAuthHash = sessionStorage.getItem('auth_hash');
+                showEditor();
+                loadSettings();
+                loadFromCloud().then(() => updateLinks());
+            } else {
+                loadSettings();
+            }
+            document.querySelectorAll('input, textarea, select').forEach(el => {
+                el.addEventListener('input', () => { updateLinks(); saveSettings(); });
+                el.addEventListener('change', () => { updateLinks(); saveSettings(); });
+            });
+            updateLinks();
+            // Позволяем нажимать Enter для входа
+            document.getElementById('pin-input').addEventListener('keypress', (e) => { if(e.key === 'Enter') checkAuth(); });
+        }
+    </script>
+
+    <script>
+    // Анимированная иконка вкладки (только на главной странице, не на виджетах)
+    (function() {
+        if (new URLSearchParams(window.location.search).get('type')) return;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        const favicon = document.getElementById('favicon');
+
+        const frames = ['\u{1F30C}', '\u{1FA90}', '\u{1F33F}', '\u{2764}\u{FE0F}'];
+        let frameIndex = 0;
+
+        function drawFavicon() {
+            ctx.clearRect(0, 0, 64, 64);
+            ctx.font = '54px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(frames[frameIndex], 32, 35);
+            favicon.href = canvas.toDataURL('image/png');
+            frameIndex = (frameIndex + 1) % frames.length;
+        }
+
+        drawFavicon();
+        setInterval(drawFavicon, 2500);
+    })();
+    </script>
+</body>
+</html>
